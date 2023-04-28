@@ -36,6 +36,9 @@ namespace WPFSQLHardver
             GyartokBetoltese();
             KategoriakBetoltese();
 
+            cbGyarto.SelectedIndex = 0;
+            cbKategoria.SelectedIndex = 0;
+
             TermekekBetoltese();
 
             this.Closed += new EventHandler(AdatbazisLezaras);
@@ -63,46 +66,54 @@ namespace WPFSQLHardver
 
         private void GyartokBetoltese()
         {
-            string SQLGyartok = "SELECT DISTINCT Gyártó FROM termékek ORDER BY Gyártó";
-            MySqlCommand parancs = new MySqlCommand(SQLGyartok, SQLKapcsolat);
-            MySqlDataReader olvaso = parancs.ExecuteReader();
-
-            cbGyarto.Items.Add(" - Nincs kiválasztva - ");
-
-            while (olvaso.Read())
-            {
-                cbGyarto.Items.Add(olvaso.GetString("Gyártó"));
-            }
-            olvaso.Close();
-            cbGyarto.SelectedIndex = 0;
+            string kategoria = cbKategoria.SelectedIndex <= 0 ? "%" : cbKategoria.SelectedItem.ToString();
+            string SQLGyartok = $"SELECT DISTINCT Gyártó FROM termékek WHERE Kategória LIKE '{kategoria}' ORDER BY Gyártó";
+            ComboboxFrissit(cbGyarto, SQLGyartok);
         }
 
         private void KategoriakBetoltese()
         {
-            string SQLKategoriak = "SELECT DISTINCT Kategória FROM termékek ORDER BY Kategória";
-            MySqlCommand parancs = new MySqlCommand(SQLKategoriak, SQLKapcsolat);
-            MySqlDataReader olvaso = parancs.ExecuteReader();
+            string gyarto = cbGyarto.SelectedIndex <= 0 ? "%" : cbGyarto.SelectedItem.ToString();
+            string SQLKategoriak = $"SELECT DISTINCT Kategória FROM termékek WHERE Gyártó LIKE '{gyarto}' ORDER BY Kategória";
+            ComboboxFrissit(cbKategoria, SQLKategoriak);
+        }
 
-            cbKategoria.Items.Add(" - Nincs kiválasztva - ");
+        private void ComboboxFrissit(ComboBox cb, string sql)
+        {
+            string elozoItem = "";
+            if (cb.SelectedIndex != -1)
+            {
+                elozoItem = cb.SelectedItem.ToString();
+            }
+
+            cb.Items.Clear();
+
+            cb.Items.Add(" - Nincs kiválasztva - ");
+
+            MySqlCommand parancs = new MySqlCommand(sql, SQLKapcsolat);
+            MySqlDataReader olvaso = parancs.ExecuteReader();
 
             while (olvaso.Read())
             {
-                cbKategoria.Items.Add(olvaso.GetString("Kategória"));
+                cb.Items.Add(olvaso.GetString(0));
             }
             olvaso.Close();
-            cbKategoria.SelectedIndex = 0;
+
+            if (elozoItem != "")
+            {
+                cb.SelectedItem = elozoItem;
+            }
         }
 
         private void TermekekBetoltese()
         {
             termekek.Clear();
 
-            string kategoria = cbKategoria.SelectedIndex == 0 ? "%" : cbKategoria.SelectedItem.ToString();
-            string gyarto = cbGyarto.SelectedIndex == 0 ? "%" : cbGyarto.SelectedItem.ToString();
+            string kategoria = cbKategoria.SelectedIndex <= 0 ? "%" : cbKategoria.SelectedItem.ToString();
+            string gyarto = cbGyarto.SelectedIndex <= 0 ? "%" : cbGyarto.SelectedItem.ToString();
 
-            string SQLTermekek = "SELECT * FROM termékek WHERE Kategória LIKE '{0}' AND Gyártó LIKE '{1}' AND Név LIKE '%{2}%'";
-            string SQLSzurt = string.Format(SQLTermekek, kategoria, gyarto, txtTermek.Text);
-            MySqlCommand parancs = new MySqlCommand(SQLSzurt, SQLKapcsolat);
+            string SQLTermekek = $"SELECT * FROM termékek WHERE Kategória LIKE '{kategoria}' AND Gyártó LIKE '{gyarto}' AND Név LIKE '%{txtTermek.Text}%'";
+            MySqlCommand parancs = new MySqlCommand(SQLTermekek, SQLKapcsolat);
             MySqlDataReader olvaso = parancs.ExecuteReader();
 
             while (olvaso.Read())
@@ -142,39 +153,13 @@ namespace WPFSQLHardver
 
         private void HTMLMentes()
         {
-            string sablon = @"
-                <!DOCTYPE HTML>
-                <html lang='hu'>
-                    <head>
-                       <meta charset='utf-8'>
-                       <title>Táblázat</title>
-                    </head>
-                    <body>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Kategória</th>
-                                    <th>Gyártó</th>
-                                    <th>Név</th>
-                                    <th>Ár</th>
-                                    <th>Garancia</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {0}
-                            </tbody>
-                        </table>
-                    </body>
-                </html>
-            ";
-
             SaveFileDialog sfd = new SaveFileDialog();
             sfd.Filter = "HTML fájl|*.html";
             if (sfd.ShowDialog() == true)
             {
                 string fajlnev = sfd.FileName;
 
-                StreamWriter sw = new StreamWriter(fajlnev);
+                StreamWriter sw = new StreamWriter(fajlnev, false, Encoding.UTF8);
 
                 string tablazatSorok = "";
                 foreach (Termek termek in termekek)
@@ -182,17 +167,15 @@ namespace WPFSQLHardver
                     tablazatSorok += $"<tr>\n{termek.ToHTMLString()}</tr>\n";
                 }
 
-                sw.Write(String.Format(sablon, tablazatSorok));
+                string sablon = File.ReadAllText("sablon.html");
+
+                sw.Write(String.Format(sablon, cbKategoria.SelectedItem, cbGyarto.SelectedItem, txtTermek.Text, tablazatSorok));
 
                 sw.Close();
                 MessageBox.Show("Mentés sikeres!");
             }
         }
 
-        private void btnSzukit_Click(object sender, RoutedEventArgs e)
-        {
-            TermekekBetoltese();
-        }
 
         private void btnMentes_Click(object sender, RoutedEventArgs e)
         {
@@ -202,6 +185,23 @@ namespace WPFSQLHardver
         private void btnMentesHTML_Click(object sender, RoutedEventArgs e)
         {
             HTMLMentes();
+        }
+
+        private void cbKategoria_DropDownClosed(object sender, EventArgs e)
+        {
+            GyartokBetoltese();
+            TermekekBetoltese();
+        }
+
+        private void cbGyarto_DropDownClosed(object sender, EventArgs e)
+        {
+            KategoriakBetoltese();
+            TermekekBetoltese();
+        }
+
+        private void txtTermek_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            TermekekBetoltese();
         }
     }
 }
